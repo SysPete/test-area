@@ -1,0 +1,87 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use Data::Dumper;
+
+use lib 'lib';
+
+use TestApp::Schema;
+use DBICx::TestDatabase;
+use Time::HiRes qw/gettimeofday tv_interval/;
+use Modern::Perl;
+
+my $schema = DBICx::TestDatabase->new('TestApp::Schema');
+
+my $inflate = $schema->resultset('Inflate');
+my $noinflate = $schema->resultset('NoInflate');
+
+my ( @timestamps, @dts, $start, $end, $rset );
+my $dt = DateTime->now();
+my $count = 100000;
+
+say "Generating $count random DateTimes + scalar timestamps in last 100 years";
+
+foreach my $i (1..$count) {
+    my $dt = $dt->clone()->subtract( years => int(rand(100)) )->subtract( months => int(rand(12)))->subtract( days => int(rand(28)))->subtract( hours => int(rand(24)));
+    push @dts, $dt;
+    push @timestamps, $dt->ymd . ' ' . $dt->hms;
+}
+
+# inserts
+
+$start = [gettimeofday];
+print "insert $count DateTime objects into auto-inflate table: ";
+foreach my $i (@dts) {
+    $inflate->create({ created => $i });
+}
+$end = [gettimeofday];
+say tv_interval($start, $end);
+
+$inflate->search({})->delete;
+
+$start = [gettimeofday];
+print "insert $count timestamps into auto-inflate table: ";
+foreach my $i (@timestamps) {
+    $inflate->create({ created => $i });
+}
+$end = [gettimeofday];
+say tv_interval($start, $end);
+
+$start = [gettimeofday];
+print "insert $count DateTime objects into no-inflate table: ";
+foreach my $i (@dts) {
+    $noinflate->create({ created => $i });
+}
+$end = [gettimeofday];
+say tv_interval($start, $end);
+
+$noinflate->search({})->delete;
+
+$start = [gettimeofday];
+print "insert $count timestamps into no-inflate table: ";
+foreach my $i (@timestamps) {
+    $noinflate->create({ created => $i });
+}
+$end = [gettimeofday];
+say tv_interval($start, $end);
+
+# selects
+
+$start = [gettimeofday];
+$rset = $inflate->search({});
+while ( my $i = $rset->next ) {
+    my $j =  $i->created;
+}
+$end = [gettimeofday];
+say "read all items in auto-inflate table: " . tv_interval($start, $end);
+
+$start = [gettimeofday];
+$rset = $noinflate->search({});
+while ( my $i = $rset->next ) {
+    my $j =  $i->created;
+}
+$end = [gettimeofday];
+say "read all items in no-inflate table: " . tv_interval($start, $end);
+
